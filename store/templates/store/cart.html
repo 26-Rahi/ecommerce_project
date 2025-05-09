@@ -1,0 +1,19 @@
+{% extends 'store/base.html' %}
+{% load cart_extras %}
+{% block title %}Your Cart{% endblock %}
+{% block content %}
+<h2>Your Cart</h2>
+<ul>
+  {% for product in products %}
+    <li>{{ product.name }} - ${{ product.price }} x {{ cart|get_item:product.id }}
+        <a href="{% url 'remove_from_cart' product.id %}">Remove</a>
+    </li>
+  {% endfor %}
+</ul>
+<p>Total: ${{ total }}</p>
+<form method="post" action="{% url 'place_order' %}">
+  {% csrf_token %}
+  <button type="submit" class="btn btn-success">Pay Now</button>
+</form>
+<a href="{% url 'clear_cart' %}">Clear Cart</a>
+{% endblock %}
