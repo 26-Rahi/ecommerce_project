@@ -1,8 +1,14 @@
 from django import forms
+from .models import Order
 from .models import Product
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 import re
+
+class OrderForm(forms.ModelForm):
+    class Meta:
+        model = Order
+        fields= ['full_name', 'address','city','postal_code','phone']
 
 class CustomUserCreationForm(UserCreationForm):
     password1 = forms.CharField(

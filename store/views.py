@@ -4,7 +4,6 @@ from .forms import ProductForm
 from django.contrib.auth.forms import UserCreationForm, AuthenticationForm
 from django.contrib.auth import login, logout
 from django.contrib.admin.views.decorators import staff_member_required
-from .models import Order
 from django.core.mail import send_mail
 from django.conf import settings
 from django.shortcuts import render, redirect
@@ -18,6 +17,17 @@ from store.utils.email_utils import send_order_confirmation_email
 from django.core.paginator import Paginator
 import pandas as pd
 from .forms import ProductUploadForm
+from .forms import OrderForm
+from .models import CartItem
+from django.template.loader import render_to_string
+from django.apps import apps
+from .models import OrderItem
+
+def order_items_list(request):
+    items = OrderItem.objects.select_related('order', 'product')
+    return render(request, 'store/order_items.html', {'items':items})
+
+
 
 def bulk_upload_products(request):
     if request.method == 'POST':
@@ -98,29 +108,72 @@ def register(request):
     return render(request, "store/register.html", {"form": form})
 
 def calculate_cart_total(user):
-    cart_items = get_cart(user)
-    return sum(item.product.price * item.quantity for item in cart_items)
-def place_order(request):
-    if request.method == "POST":
-        total = calculate_cart_total(request.user)
-        order = Order.objects.create(user=request.user, total_amount=total)
+    cart_items = CartItem.objects.filter(user=user)
+    total = sum(item.product.price * item.quantity for item in cart_items)
+    return total
 
-        print("User email is:", request.user.email)  # <--- add this line
 
-        try:
-            send_mail(
-                subject=f'Order Confirmation #{order.id} Total: {order.total_amount}',
-                message='Thank you for your order!',
-                from_email='rahipatel03@gmail.com',
-                recipient_list=[request.user.email],
-                fail_silently=False,
-            )
-            print("Mail sent!")
-        except Exception as e:
-            print("Mail failed:", e)
-
-        return redirect("order_success")
 @login_required
+def place_order(request):
+    OrderItem = apps.get_model('store', 'OrderItem')
+    Order = apps.get_model('store', 'Order')
+                               
+    if request.method == 'POST':
+        form = OrderForm(request.POST)
+        if form.is_valid():
+            order = form.save(commit=False)
+            order.user = request.user
+            order.total_amount = calculate_cart_total(request.user)
+            order.save()
+
+            # Get cart items
+            cart_items = CartItem.objects.filter(user=request.user)
+            # Save order items
+            for item in cart_items:
+               OrderItem.objects.create(
+               order=order,
+               product=item.product,
+               quantity=item.quantity,
+               price=item.product.price
+    )
+
+            
+
+            # Generate email body from template
+            message = render_to_string('store/email_template.txt', {
+                'user': request.user,
+                'items': cart_items,
+                'order': order,
+            })
+
+            try:
+                # Add total_price to each item for email context
+                for item in cart_items:
+                    item.total_price = item.product.price * item.quantity
+
+                # Send confirmation email
+                send_mail(
+                    subject=f'Order Confirmation #{order.id} Total: ₹{order.total_amount}',
+                    message=message,
+                    from_email='rahiepatel03@example.com',
+                    recipient_list=[request.user.email],
+                    fail_silently=False,
+                )
+                print("Mail sent!")
+            except Exception as e:
+                print("Mail failed:", e)
+
+            return render(request, 'store/order_confirmation.html', {
+                'user': request.user,
+                'items': cart_items,
+                'order': order,
+            })
+    else:
+        form = OrderForm()
+
+    return render(request, 'store/place_order.html', {'form': form})
+
+       
 def order_success(request):
     return render(request, 'store/order_success.html')
 

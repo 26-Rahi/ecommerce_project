@@ -1,0 +1,12 @@
+{% load custom_filters %}
+
+Thank you for your order, {{ user.username }}!
+
+Your ordered items:
+{% for item in items %}
+- {{ item.product.name }} (x{{ item.quantity }}) = ₹{{ item.product.price|multiply:item.quantity }}
+{% endfor %}
+
+Total Amount: ₹{{ order.total_amount }}
+
+We appreciate your purchase!

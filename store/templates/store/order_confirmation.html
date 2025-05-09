@@ -1,18 +1,19 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Order Confirmation</title>
-</head>
-<body>
-    <h2>Thank you for your order, {{ order.user.username }}!</h2>
-    <p>Here are the details of your order:</p>
+{% extends 'store/base.html' %}
+{% load custom_filters %}
 
-    <ul>
-        {% for item in items %}
-            <li>{{ item.product.name }} - Quantity: {{ item.quantity }} - Price: ₹{{ item.price }}</li>
-        {% endfor %}
-    </ul>
+{% block title %}Order Placed{% endblock %}
 
-    <p>Total: ₹{{ order.total_price }}</p>
-</body>
-</html>
+{% block content %}
+<h2>Thank you for your order, {{ user.username }}</h2>
+<p>Here are the details of your order:</p>
+
+<ul>
+  {% for item in items %}
+    <li>{{ item.product.name }} – Quantity: {{ item.quantity }} – Price: ₹{{ item.product.price|multiply:item.quantity }}</li>
+  {% endfor %}
+</ul>
+
+<p><strong>Total:</strong> ₹{{ order.total_amount }}</p>
+
+<p><strong>Thank you for shopping with us.</strong></p>
+{% endblock %}

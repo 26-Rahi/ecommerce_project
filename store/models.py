@@ -1,9 +1,18 @@
 from django.db import models
+from django.shortcuts import render
 from django.contrib.auth.models import User
+from django.utils import timezone
 
-# store/models.py
-from django.db import models
 
+def order_items_list(request):
+    items = OrderItem.objects.select_related('order', 'product')
+    return render(request, 'order_items.html', {'items':items})
+
+class OrderItem(models.Model):
+    order = models.ForeignKey('Order', on_delete=models.CASCADE)
+    product = models.ForeignKey('Product', on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=10, decimal_places=2)
 
 class CartItem(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -16,10 +25,15 @@ class CartItem(models.Model):
 
 class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
+    full_name = models.CharField(max_length=100, null=True, blank=True)
+    address = models.TextField(max_length=60, null=True, blank=True)
+    city = models.CharField(max_length=50, null=True, blank=True)
+    postal_code = models.CharField(max_length=10, null=True, blank=True)
+    phone = models.CharField(max_length=15, null=True, blank=True)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     date_ordered = models.DateTimeField(auto_now_add=True)
     is_paid = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True, null=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     def _str_(self):
         return f"Order {self.id} by {self.user.username}"
