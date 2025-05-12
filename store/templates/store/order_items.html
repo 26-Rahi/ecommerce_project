@@ -11,6 +11,11 @@
 <body>
     <div class="container mt-5">
         <h2 class="mb-4 text-center">Order Items</h2>
+        <div class="text-end mb-3">
+      <a href="{% url 'export_orders_excel' %}" class="btn btn-success">Export Orders to Excel</a>
+    </div>
+
+
 
         {% if items %}
         <table class="table table-bordered table-striped">

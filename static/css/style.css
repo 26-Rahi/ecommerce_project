@@ -107,3 +107,6 @@ h1, h2, h3 {
     margin: 5px;
     width: 30%;
   }
+  label.required::after {
+    content: '';
+}

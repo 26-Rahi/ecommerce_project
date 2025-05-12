@@ -1,54 +1,63 @@
 from django import forms
-from .models import Order
-from .models import Product
+from .models import Order, Product
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 import re
-
+from django.core.exceptions import ValidationError
+# Order Form
 class OrderForm(forms.ModelForm):
     class Meta:
         model = Order
-        fields= ['full_name', 'address','city','postal_code','phone']
+        fields = ['full_name', 'address', 'city', 'postal_code', 'phone']
 
+
+# Custom User Creation Form with Password Restrictions
 class CustomUserCreationForm(UserCreationForm):
-    password1 = forms.CharField(
-        label='Password',
-        widget=forms.PasswordInput(attrs={
-            'pattern': '^[A-Z0-9]{8}$',
-            'title': 'Password must be exactly 8 characters long with uppercase letters and numbers only.',
-            'maxlength': '8',
-            'minlength': '8',
-        }),
-        help_text='Password must be exactly 8 characters with only uppercase letters and numbers.'
-    )
-
-    def clean_password1(self):
-        password = self.cleaned_data.get('password1')
-        if not re.fullmatch(r'[A-Z0-9]{8}', password):
-            raise forms.ValidationError('Password must be exactly 8 characters long with only uppercase letters and numbers.')
-        return password
+    email = forms.EmailField(required=True)
 
     class Meta:
         model = User
-        fields = ['username', 'email', 'password1','password2']
+        fields = ("username", "email", "password1", "password2")
 
+    def clean_password1(self):
+        password = self.cleaned_data.get("password1")
+        if not re.search(r"[A-Z]", password):
+            raise ValidationError("Password must contain at least one uppercase letter.")
+        if not re.search(r"[a-z]", password):
+            raise ValidationError("Password must contain at least one lowercase letter.")
+        if not re.search(r"\d", password):
+            raise ValidationError("Password must contain at least one number.")
+        return password
+    
+
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password1', 'password2']
+
+
+# Register Form (extends UserCreationForm and uses cleaned email)
 class RegisterForm(UserCreationForm):
     email = forms.EmailField(required=True)
 
     class Meta:
         model = User
         fields = ["username", "email", "password1", "password2"]
+
     def save(self, commit=True):
         user = super().save(commit=False)
         user.email = self.cleaned_data["email"]
         if commit:
             user.save()
-        return user 
+        return user
 
+
+# Product Form
 class ProductForm(forms.ModelForm):
     class Meta:
         model = Product
         fields = ['category', 'name', 'description', 'price', 'image']
 
+
+# Product Upload Form for Bulk Upload
 class ProductUploadForm(forms.Form):
-    file = forms.FileField()    
+    file = forms.FileField()

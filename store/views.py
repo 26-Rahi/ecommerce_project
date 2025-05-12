@@ -21,12 +21,48 @@ from .forms import OrderForm
 from .models import CartItem
 from django.template.loader import render_to_string
 from django.apps import apps
-from .models import OrderItem
+from .models import OrderItem, Order
+from django.http import HttpResponse
+from openpyxl import Workbook
+from .serializers import ProductSerializer
+from rest_framework.generics import ListAPIView
+from django.db.models import Q
+
+
+class ProductListAPI(ListAPIView):
+    queryset = Product.objects.all()
+    serializer_class = ProductSerializer
+
+def export_orders_excel(request):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = 'Orders'
+
+    headers = ['Order ID', 'Customer', 'Product', 'Quantity', 'Price', 'Order Date']
+    worksheet.append(headers)
+
+    orders = Order.objects.all().prefetch_related('orderitem_set')
+
+    for order in orders:
+        for item in order.orderitem_set.all():
+            worksheet.append([
+                order.id,
+                order.user.username if order.user else 'Guest',
+                item.product.name,
+                item.quantity,
+                item.price,
+                order.created_at.strftime('%Y-%m-%d %H:%M')
+            ])
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename=orders.xlsx'
+    workbook.save(response)
+    return response
+
 
 def order_items_list(request):
     items = OrderItem.objects.select_related('order', 'product')
-    return render(request, 'store/order_items.html', {'items':items})
-
+    return render(request, 'store/order_items.html', {'items': items})
 
 
 def bulk_upload_products(request):
@@ -42,22 +78,19 @@ def bulk_upload_products(request):
                         price=row['price'],
                         description=row.get('description', '')
                     )
-                return redirect('product_list')  # or any success page
+                return redirect('product_list')
             except Exception as e:
                 return render(request, 'store/bulk_upload.html', {'form': form, 'error': str(e)})
     else:
         form = ProductUploadForm()
-    
-    return render(request, 'store/bulk_upload.html',{'form':form})
 
-from .models import Product, Category
-from django.core.paginator import Paginator
+    return render(request, 'store/bulk_upload.html', {'form': form})
+
 
 def product_list_view(request):
     products = Product.objects.all()
     categories = Category.objects.all()
 
-    # Search and filter
     query = request.GET.get('q')
     category = request.GET.get('category')
     min_price = request.GET.get('min_price')
@@ -72,7 +105,6 @@ def product_list_view(request):
     if max_price:
         products = products.filter(price__lte=max_price)
 
-    # Pagination
     paginator = Paginator(products, 6)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
@@ -86,16 +118,18 @@ def product_list_view(request):
         'max_price': max_price,
     })
 
+
 def register_view(request):
     if request.method == 'POST':
         form = RegisterForm(request.POST)
         if form.is_valid():
             user = form.save()
             login(request, user)
-            return redirect('home')  # change as needed
+            return redirect('home')
     else:
         form = RegisterForm()
-    return render(request, 'store/register.html',{'form':form})
+    return render(request, 'store/register.html', {'form': form})
+
 
 def register(request):
     if request.method == "POST":
@@ -107,9 +141,12 @@ def register(request):
         form = CustomUserCreationForm()
     return render(request, "store/register.html", {"form": form})
 
+
 def calculate_cart_total(user):
     cart_items = CartItem.objects.filter(user=user)
-    total = sum(item.product.price * item.quantity for item in cart_items)
+    total = 0
+    for item in cart_items:
+        total += item.product.price * item.quantity
     return total
 
 
@@ -117,7 +154,7 @@ def calculate_cart_total(user):
 def place_order(request):
     OrderItem = apps.get_model('store', 'OrderItem')
     Order = apps.get_model('store', 'Order')
-                               
+
     if request.method == 'POST':
         form = OrderForm(request.POST)
         if form.is_valid():
@@ -126,20 +163,18 @@ def place_order(request):
             order.total_amount = calculate_cart_total(request.user)
             order.save()
 
-            # Get cart items
             cart_items = CartItem.objects.filter(user=request.user)
-            # Save order items
             for item in cart_items:
-               OrderItem.objects.create(
-               order=order,
-               product=item.product,
-               quantity=item.quantity,
-               price=item.product.price
-    )
+                OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    quantity=item.quantity,
+                    price=item.product.price
+                )
 
-            
+            for item in cart_items:
+                item.total_price = item.product.price * item.quantity
 
-            # Generate email body from template
             message = render_to_string('store/email_template.txt', {
                 'user': request.user,
                 'items': cart_items,
@@ -147,11 +182,6 @@ def place_order(request):
             })
 
             try:
-                # Add total_price to each item for email context
-                for item in cart_items:
-                    item.total_price = item.product.price * item.quantity
-
-                # Send confirmation email
                 send_mail(
                     subject=f'Order Confirmation #{order.id} Total: ₹{order.total_amount}',
                     message=message,
@@ -159,7 +189,6 @@ def place_order(request):
                     recipient_list=[request.user.email],
                     fail_silently=False,
                 )
-                print("Mail sent!")
             except Exception as e:
                 print("Mail failed:", e)
 
@@ -173,9 +202,10 @@ def place_order(request):
 
     return render(request, 'store/place_order.html', {'form': form})
 
-       
+
 def order_success(request):
     return render(request, 'store/order_success.html')
+
 
 @login_required
 def pay_now(request, order_id):
@@ -186,34 +216,38 @@ def pay_now(request, order_id):
         return redirect('order_detail', order_id=order.id)
     return redirect('order_detail', order_id=order.id)
 
+
 @login_required
 def order_detail(request, order_id):
     order = Order.objects.get(id=order_id, user=request.user)
     return render(request, 'store/order_detail.html', {'order': order})
 
+
 def add_to_cart(request, product_id):
     product = get_object_or_404(Product, id=product_id)
     cart = request.session.get('cart', {})
-    cart[str(product_id)] = cart.get(str(product_id), 0) + 1
+    key = str(product_id)
+    if key in cart:
+        cart[key] += 1
+    else:
+        cart[key] = 1
     request.session['cart'] = cart
     return redirect('home')
 
+
 def checkout_view(request):
     if request.method == 'POST':
-        # calculate the total
-        total_price = calculate_cart_total(request)  # use your own logic
+        total_price = calculate_cart_total(request)
 
-        # Create the order
         order = Order.objects.create(
             user=request.user,
             total_price=total_price,
-            # Add any other fields like address, items, etc.
         )
 
-        # Send confirmation email
         send_order_confirmation_email(order, request.user.email)
 
-        return redirect('order_success')  # Or wherever you redirect after order
+        return redirect('order_success')
+
 
 def home_view(request):
     query = request.GET.get('q')
@@ -235,14 +269,15 @@ def home_view(request):
     if max_price:
         products = products.filter(price__lte=max_price)
 
-    categories = Product.objects.values_list('category', flat=True).distinct()
+    categories = []
+    for cat in Product.objects.values_list('category', flat=True).distinct():
+        categories.append(cat)
 
     return render(request, 'store/home.html', {
         'products': products,
         'categories': categories
     })
 
-from django.db.models import Q
 
 def home(request):
     categories = Category.objects.all()
@@ -260,7 +295,7 @@ def home(request):
         products = products.filter(price__gte=min_price)
     if max_price:
         products = products.filter(price__lte=max_price)
-    
+
     if q:
         products = products.filter(Q(name_icontains=q) | Q(description_icontains=q))
 
@@ -277,15 +312,11 @@ def login_view(request):
         form = AuthenticationForm()
     return render(request, 'store/login.html', {'form': form})
 
+
 def logout_view(request):
     logout(request)
     return redirect('home')
 
-def add_to_cart(request, product_id):
-    cart = request.session.get('cart', {})
-    cart[str(product_id)] = cart.get(str(product_id), 0) + 1
-    request.session['cart'] = cart
-    return redirect('home')
 
 def remove_from_cart(request, product_id):
     cart = request.session.get('cart', {})
@@ -293,15 +324,21 @@ def remove_from_cart(request, product_id):
     request.session['cart'] = cart
     return redirect('cart')
 
+
 def clear_cart(request):
     request.session['cart'] = {}
     return redirect('cart')
 
+
 def view_cart(request):
     cart = request.session.get('cart', {})
     products = Product.objects.filter(id__in=cart.keys())
-    total = sum(product.price * cart[str(product.id)] for product in products)
+    total = 0
+    for product in products:
+        total += product.price * cart[str(product.id)]
+
     return render(request, 'store/cart.html', {'products': products, 'cart': cart, 'total': total})
+
 
 @staff_member_required
 def add_product(request):

@@ -9,4 +9,4 @@ Your ordered items:
 
 Total Amount: ₹{{ order.total_amount }}
 
-We appreciate your purchase!
+We appreciate your purchase! ThankYou ! We Look Forward for more purchase

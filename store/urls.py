@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from .views import bulk_upload_products
+from .views import ProductListAPI
 
 urlpatterns = [
     path('', views.home, name='home'),
@@ -21,5 +22,8 @@ urlpatterns = [
     path('bulk-upload/', bulk_upload_products, name='bulk_upload_products'),
     path('place-order/', views.place_order, name='place_order'),
     path('order-items/', views.order_items_list, name='order_items'),
+    path('export=orders-excel/', views.export_orders_excel, name='export_orders_excel'),
+    path('api/products/', ProductListAPI.as_view(), name='product-list-api')
+
 ]
 
